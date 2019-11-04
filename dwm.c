@@ -52,8 +52,8 @@
 #define ISVISIBLE(C)            ((C->tags & C->mon->tagset[C->mon->seltags]))
 #define LENGTH(X)               (sizeof X / sizeof X[0])
 #define MOUSEMASK               (BUTTONMASK|PointerMotionMask)
-#define WIDTH(X)                ((X)->w + 2 * (X)->bw + gappx)
-#define HEIGHT(X)               ((X)->h + 2 * (X)->bw + gappx)
+#define WIDTH(X)                ((X)->w + 2 * (X)->bw)
+#define HEIGHT(X)               ((X)->h + 2 * (X)->bw)
 #define TAGMASK                 ((1 << LENGTH(tags)) - 1)
 #define TEXTW(X)                (drw_fontset_getwidth(drw, (X)) + lrpad)
 
@@ -121,6 +121,7 @@ struct Monitor {
 	int by;               /* bar geometry */
 	int mx, my, mw, mh;   /* screen size */
 	int wx, wy, ww, wh;   /* window area  */
+  int gappx;
 	unsigned int seltags;
 	unsigned int sellt;
 	unsigned int tagset[2];
@@ -648,6 +649,7 @@ createmon(void)
 	m->mfact = mfact;
 	m->nmaster = nmaster;
 	m->showbar = showbar;
+  m->gappx = gappx;
 	m->topbar = topbar;
 	m->lt[0] = &layouts[0];
 	m->lt[1] = &layouts[1 % LENGTH(layouts)];
@@ -1301,32 +1303,13 @@ void
 resizeclient(Client *c, int x, int y, int w, int h)
 {
 	XWindowChanges wc;
-  unsigned int n;
-  unsigned int gapoffset;
-  unsigned int gapincr;
-  Client *nbc;
 
-	wc.border_width = c->bw;
-
-  for (n = 0, nbc = nexttiled(selmon -> clients); nbc; nbc=nexttiled(nbc->next), n++);
-
-  if(c->isfloating || selmon->lt[selmon->sellt]->arrange == NULL){
-  gapincr = gapoffset = 0;
-  } else {
-    if(selmon->lt[selmon->sellt]->arrange == monocle || n == 1){
-      gapoffset = 0;
-      gapincr = -2 * borderpx;
-      wc.border_width = 0;
-    } else {
-      gapoffset = gappx;
-      gapincr = 2 * gappx;
-    }
-  }
-
-	c->oldx = c->x; c->x = wc.x = x;
+  c->oldx = c->x; c->x = wc.x = x;
 	c->oldy = c->y; c->y = wc.y = y;
 	c->oldw = c->w; c->w = wc.width = w;
 	c->oldh = c->h; c->h = wc.height = h;
+	wc.border_width = c->bw;
+
 	XConfigureWindow(dpy, c->win, CWX|CWY|CWWidth|CWHeight|CWBorderWidth, &wc);
 	configure(c);
 	XSync(dpy, False);
@@ -1543,6 +1526,16 @@ setfullscreen(Client *c, int fullscreen)
 }
 
 void
+setgaps(const Arg *arg)
+{
+  	if ((arg->i == 0) || (selmon->gappx + arg->i < 0))
+    		selmon->gappx = 0;
+  	else
+    		selmon->gappx += arg->i;
+  	arrange(selmon);
+  }
+
+void
 setlayout(const Arg *arg)
 {
 	if (!arg || !arg->v || arg->v != selmon->lt[selmon->sellt])
@@ -1729,18 +1722,16 @@ tile(Monitor *m)
 	if (n > m->nmaster)
 		mw = m->nmaster ? (m->ww - (g = gappx)) * m->mfact : 0;
 	else
-		mw = m->ww;
-	for (i = my = ty = 0, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++)
+		mw = m->ww - m->gappx;
+  for (i = 0, my = ty = m->gappx, c = nexttiled(m->clients); c; c = nexttiled(c->next), i++)
 		if (i < m->nmaster) {
-			r = MIN(n, m->nmaster) - i;
-			h = (m->wh - my - gappx * (r - 1)) / r;
-			resize(c, m->wx, m->wy + my, mw - (2*c->bw), h - (2*c->bw), 0);
-			my += HEIGHT(c) + gappx;
+      h = (m->wh - my) / (MIN(n, m->nmaster) - i) - m->gappx;
+    	resize(c, m->wx + m->gappx, m->wy + my, mw - (2*c->bw) - m->gappx, h - (2*c->bw), 0);
+      my += HEIGHT(c) + m->gappx;
 		} else {
-			r = n - i;
-			h = (m->wh - ty - gappx * (r - 1)) / r;
-			resize(c, m->wx + mw + g, m->wy + ty, m->ww - mw - (2*c->bw), h - (2*c->bw), False);
-			ty += HEIGHT(c) + gappx;
+      h = (m->wh - ty) / (n - i) - m->gappx;
+      resize(c, m->wx + mw + m->gappx, m->wy + ty, m->ww - mw - (2*c->bw) - 2*m->gappx, h - (2*c->bw), 0);
+      ty += HEIGHT(c) + m->gappx;
 		}
 }
 
